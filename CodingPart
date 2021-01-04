@@ -1,0 +1,138 @@
+#include <Adafruit_Fingerprint.h>
+#include <SoftwareSerial.h>
+#include <Streaming.h>
+#include <Servo.h>
+
+#define __Debug         1       // servo pin
+const int angleServo    = 120; // Rotation angle
+bool isOpen;
+
+#if __Debug
+#define DBG(X)          Serial.println(X)
+#else
+#define DBG(X)
+#endif
+
+SoftwareSerial mySerial(2,3);                                // tx, rx
+SoftwareSerial gsmSerial(10,11); // Rx Tx
+
+Adafruit_Fingerprint finger = Adafruit_Fingerprint(&mySerial);
+Servo myservo;                                                  // create servo object to control a servo
+
+void open_door()
+{
+    myservo.attach(8);
+    for(int i=20; i<angleServo; i++)
+    {
+        myservo.write(i);
+        delay(5);
+    }
+     myservo.detach();
+}
+
+ void SendMessage()
+{
+  gsmSerial.println("AT+CMGF=1");    //Sets the GSM Module in Text Mode
+  delay(1000);  // Delay of 1000 milli seconds or 1 second
+  gsmSerial.println("AT+CMGS=\"+917631154519\"\r"); // Replace x with mobile number
+  delay(1000);
+  gsmSerial.println("alert ! alert! Someone else trying to open ur lock!");// The SMS text you want to send
+  delay(100);
+   gsmSerial.println((char)26);// ASCII code of CTRL+Z
+  delay(1000);
+}
+
+//void RecieveMessage()
+//{
+//  mySerial.println("AT+CNMI=2,2,0,0,0"); // AT Command to receive a live SMS
+//  delay(1000);
+// }
+
+
+void close_door()
+{ 
+  myservo.attach(8);
+  for(int i=(angleServo-1); i>=20; i--)
+    {
+        myservo.write(i);
+        delay(5);
+    }
+  myservo.detach();
+}
+
+void setup()
+{
+    Serial.begin(9600);
+     gsmSerial.begin(9600);
+    finger.begin(57600);
+     delay(1000);
+   // gsmSerial.begin(9600);
+    //Serial.begin(9600);
+    delay(100);  
+    DBG("setup ok!");
+}
+
+
+void loop()                     // run over and over again
+{ 
+  
+    if(getFingerprintIDez()>=0)
+    { 
+      if(isOpen) {
+        isOpen = !isOpen;
+        close_door();
+      }
+      else if(!isOpen) {
+        isOpen = !isOpen;
+        open_door();
+      }
+      Serial.write(isOpen);
+      DBG("get right finger, open door now!!");
+    }
+    
+       
+    delay(50);
+}
+
+
+// returns -1 if failed, otherwise returns ID #
+int getFingerprintIDez()
+{
+
+    if (!finger.verifyPassword())
+    {
+        DBG("Did not find fingerprint sensor :(");
+        return -1;
+    }
+
+    uint8_t p = finger.getImage();
+    if (p != FINGERPRINT_OK)
+    {
+        return -1;
+    }
+
+    p = finger.image2Tz();
+    if (p != FINGERPRINT_OK)
+    {
+        return -1;
+    }
+
+    p = finger.fingerFastSearch();
+    if (p != FINGERPRINT_OK)
+    {
+        SendMessage();
+        DBG("Did not match fingerprint:(");
+        delay(1000);
+        return -1;
+    }
+
+#if __Debug
+    Serial.print("Found ID #");
+    Serial.print(finger.fingerID);
+    Serial.print(" with confidence of ");
+    DBG(finger.confidence);
+#endif
+
+    return finger.fingerID;
+
+}
